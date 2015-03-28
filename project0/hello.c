@@ -73,6 +73,9 @@ ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n);
 // open socket
 int open_clientfd(char* ip, int port);
 
+// calculate checksum
+void set_checksum(struct message *m);
+
 // for debug
 void printMessage(struct message *m);
 
@@ -82,7 +85,6 @@ void main(int argc, char **argv)
     int port;
     int fd_from_client;
     int i;
-    rio_t rio;
 
     for(i=1; i<argc; i++) {
         if(!strcmp(argv[i], "-h")) {
@@ -103,7 +105,6 @@ void main(int argc, char **argv)
     phase1(fd_from_client);
 
     // phase 2
-    rio_init(&rio, fd_from_client);
     phase2(fd_from_client);
     close(fd_from_client);
 }
@@ -116,7 +117,6 @@ void phase1(int fd)
 
     write_m.op = 1;
     write_m.proto = 1;
-    write_m.checksum = read_m.checksum;
     write_m.trans_id = read_m.trans_id;
 
     write_message(fd, &write_m);
@@ -126,6 +126,8 @@ void phase1(int fd)
 void phase2(int fd)
 {
     char buf[MAXLINE];
+    rio_t rio;
+    rio_init(&rio, fd);
     while(fgets(buf, MAXLINE, stdin) != NULL) {
         int i=0;
         for(i=0; i<strlen(buf); i++) {
@@ -138,11 +140,11 @@ void phase2(int fd)
         }
         printf("client : %s\n", buf);
         rio_write_nobuf(fd, buf, strlen(buf));
-        char buf2[MAXLINE];
-        buf2[0] = 0;
-        rio_read_nobuf(fd, buf2, 3);
-        //read_string(fd, buf, MAXLINE); 
-        printf("server : %s\n", buf2);
+
+        buf[0] = 0;
+        rio_read_nobuf(fd, buf, 3);
+     //   read_string(&rio, buf, MAXLINE); 
+        printf("server : %s\n", buf);
     }
 }
 
@@ -154,24 +156,29 @@ void read_message(int fd, struct message *m)
 
     m->op = buf[0];
     m->proto = buf[1];
+    m->checksum = ( *(short *)(buf+2) );
+    m->trans_id = ( *(int *)(buf+4) );
+    printf("read_message_network \n");
+    printMessage(m);
+
     m->checksum = ntohs( *(short *)(buf+2) );
     m->trans_id = ntohl( *(int *)(buf+4) );
 
-    printf("read_message\n");
+    printf("read_message_ubuntu_big_endian \n");
     printMessage(m);
+
 }
 
 void write_message(int fd, struct message *m)
 {
-    printf("write_message\n");
-    printMessage(m);
-
     struct message m_copy = *m;
 
-    m_copy.checksum = htons(m_copy.checksum);
     m_copy.trans_id = htonl(m_copy.trans_id);
+    set_checksum(&m_copy);
     
-    rio_write_nobuf(fd, (void *)m, sizeof m);
+    printf("write_message_network_little_endian\n");
+    printMessage(&m_copy);
+    rio_write_nobuf(fd, &m_copy, sizeof m_copy);
 }
 
 // read write without buffer, handle shortcount
@@ -296,21 +303,59 @@ int open_clientfd(char* ip, int port)
     return clientfd;
 }
 
+// calculate checksum
+void set_checksum(struct message *m)
+{
+    printf("set checksum\n");
+    unsigned short checksum1, checksum2, checksum3;
+    unsigned int checksum, carry;
+
+    checksum1 = *(char *)m << 8;
+    checksum1 += *((char *)m+1) & 0xff;
+  //  printf("%x\n", checksum1);
+
+    checksum2 = *((char *)m+4) << 8;
+    checksum2 += *((char *)m+5) & 0xff;
+ //   printf("%x\n", checksum2);
+
+    checksum3 = *((char *)m+6) << 8;
+    checksum3 += *((char *)m+7) & 0xff;
+//    printf("%x\n", checksum3);
+
+    checksum = checksum1 + checksum2 + checksum3;
+    
+    printf("%x\n", checksum);
+
+    while(checksum >> 16 != 0) {
+       carry = checksum >> 16;
+       checksum = checksum & 0xffff;
+       checksum += carry;
+    }
+    m->checksum = ntohs(~checksum);
+}
+
 // for debug 
 void printMessage(struct message *m)
 {
     int j;
+
+    char temp[3];
+//    printf("test--\n");
+//    printf("%p %p %p\n", temp, temp+1, temp+2);
+//    printf("test--\n");
+
     for(j=0; j<8; j++) {
-        char c = *(char *)(m+j);
+        char c = *((char *)m+j);
 
         if(j == 0)
-            printf("op :       %10d (", m->op);
+            printf("op         (%p) : 0x%10x (", &m->op, (int)m->op);
         if(j == 1)
-            printf(")\nproto :    %10d (", m->proto);
+            printf(")\nproto      (%p) : 0x%10x (", &m->proto, (int)m->proto);
         if(j == 2)
-            printf(")\nchecksum : %10x (", m->checksum);
+            printf(")\nchecksum   (%p) : 0x%10x (", &m->checksum, m->checksum);
         if(j == 4)
-            printf(")\ntrnas_id : %10x (", m->trans_id);
+            printf(")\ntrnas_id   (%p) : 0x%10x (", &m->trans_id, m->trans_id);
+        //printf(".%p.", ((char *)m+j));
         printf(BPattern, BOrder(c));
     }
 
