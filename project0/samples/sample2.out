@@ -1,0 +1,17 @@
+k
+ha
+ur
+gr
+p
+G
+g
+chose
+esential
+Why those newlines are not removed?
+
+
+
+Because it contains \r\n(windows) instead of \n(linux).
+\
+\END OF SAMPLE TEXT\
+\
