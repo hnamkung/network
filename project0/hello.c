@@ -131,20 +131,21 @@ void phase2(int fd)
     while(fgets(buf, MAXLINE, stdin) != NULL) {
         int i=0;
         for(i=0; i<strlen(buf); i++) {
-            if(buf[i] == 10) {
+            if(buf[i] == '\n') {
                 buf[i] = '\\';
                 buf[i+1] = '0';
                 buf[i+2] = 0;
                 break;
             }
         }
-        printf("client : %s\n", buf);
+        printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
         rio_write_nobuf(fd, buf, strlen(buf));
 
-        buf[0] = 0;
-        rio_read_nobuf(fd, buf, 3);
-     //   read_string(&rio, buf, MAXLINE); 
-        printf("server : %s\n", buf);
+        //int len = rio_read_nobuf(fd, buf, 3);
+        //buf[3] = 0;
+        //printf("len : %d\n", len);
+        read_string(&rio, buf, MAXLINE); 
+        printf("server : %s    len(%d)\n", buf, (int)strlen(buf));
     }
 }
 
@@ -231,9 +232,10 @@ ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
 
     for(n=1; n<maxlen; n++) {
         if((rc = rio_read_buf(rp, &c, 1)) == 1) {
-            *bufp++ = c;
+            *bufp = c;
             if(*(bufp-1) == '\\' && *bufp == '0')
                 break;
+            bufp++;
         }
         else if(rc == 0) {
             if(n == 1)
@@ -243,7 +245,7 @@ ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
         } else
             return -1;
     }
-    *bufp = 0;
+    *(bufp+1) = 0;
     return n;
 }
 
