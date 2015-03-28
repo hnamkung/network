@@ -56,6 +56,8 @@ void phase1(int fd_from_client);
 
 // phase 2
 void phase2(int fd_from_client);
+void add_duplicate_slash(char *buf);
+void remove_duplicate_slash(char *bubuff); 
 
 // read write wrapper
 void read_message(int fd, struct message *m);
@@ -96,8 +98,8 @@ void main(int argc, char **argv)
         if(!strcmp(argv[i], "-m")) {
         }
     }
-    printf("port : %d\n", port);
-    printf("ip : %s\n", ip);
+//    printf("port : %d\n", port);
+//    printf("ip : %s\n", ip);
 
     fd_from_client = open_clientfd(ip, port);
 
@@ -126,27 +128,59 @@ void phase1(int fd)
 void phase2(int fd)
 {
     char buf[MAXLINE];
+    int error;
     rio_t rio;
     rio_init(&rio, fd);
     while(fgets(buf, MAXLINE, stdin) != NULL) {
-        int i=0;
-        for(i=0; i<strlen(buf); i++) {
-            if(buf[i] == '\n') {
-                buf[i] = '\\';
-                buf[i+1] = '0';
-                buf[i+2] = 0;
-                break;
-            }
-        }
-        printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
+        add_duplicate_slash(buf);
+        int length = strlen(buf);
+        buf[length] = '\\';
+        buf[length+1] = '0';
+        buf[length+2] = 0;
+        //printf("client : %s\n\n", buf);
+        //printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
         rio_write_nobuf(fd, buf, strlen(buf));
 
-        //int len = rio_read_nobuf(fd, buf, 3);
-        //buf[3] = 0;
+       // int len = rio_read_nobuf(fd, buf, 4);
+       // buf[4] = 0;
+       // printf("server : %s    len(%d)\n", buf, len);
         //printf("len : %d\n", len);
-        read_string(&rio, buf, MAXLINE); 
-        printf("server : %s    len(%d)\n", buf, (int)strlen(buf));
+       if((error = read_string(&rio, buf, MAXLINE)) < 0) {
+            printf("Error! read_string returned %d\n", error);
+        }
+       remove_duplicate_slash(buf);
+       printf("%s", buf);
     }
+}
+void add_duplicate_slash(char *buf)
+{
+    int i=0;
+    int j=0;
+    while(buf[i] != 0) {
+        if(buf[i] == '\\') {
+            for(j=strlen(buf); j>i; j--) {
+                buf[j+1] = buf[j];
+            }
+            buf[i+1] = '\\';
+            i++;
+        }
+        i++;
+    }
+}
+
+void remove_duplicate_slash(char *buf)
+{
+    int i=0;
+    int j=0;
+    while(buf[i] != 0) {
+        if(buf[i] == '\\') {
+            for(j=i+1; j<strlen(buf); j++) {
+                buf[j] = buf[j+1];
+            }
+        }
+        i++;
+    }
+
 }
 
 // read write wrapper
@@ -159,14 +193,14 @@ void read_message(int fd, struct message *m)
     m->proto = buf[1];
     m->checksum = ( *(short *)(buf+2) );
     m->trans_id = ( *(int *)(buf+4) );
-    printf("read_message_network \n");
-    printMessage(m);
+   // printf("read_message_network \n");
+   // printMessage(m);
 
     m->checksum = ntohs( *(short *)(buf+2) );
     m->trans_id = ntohl( *(int *)(buf+4) );
 
-    printf("read_message_ubuntu_big_endian \n");
-    printMessage(m);
+    //printf("read_message_ubuntu_big_endian \n");
+   // printMessage(m);
 
 }
 
@@ -177,8 +211,8 @@ void write_message(int fd, struct message *m)
     m_copy.trans_id = htonl(m_copy.trans_id);
     set_checksum(&m_copy);
     
-    printf("write_message_network_little_endian\n");
-    printMessage(&m_copy);
+    //printf("write_message_network_little_endian\n");
+   // printMessage(&m_copy);
     rio_write_nobuf(fd, &m_copy, sizeof m_copy);
 }
 
@@ -194,6 +228,7 @@ ssize_t rio_read_nobuf(int fd, void *usrbuf, size_t n)
         }
         else if(nread == 0)
             break;
+    //    printf("read_nobuf : %d\n", (int)nread);
         nleft -= nread;
         bufp += nread;
     }
@@ -230,30 +265,33 @@ ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
     int n, rc;
     char c, *bufp = usrbuf;
 
+   // printf("---read string start\n");
+
     for(n=1; n<maxlen; n++) {
         if((rc = rio_read_buf(rp, &c, 1)) == 1) {
+            //printf("%c(%d)", c, (int)c);
             *bufp = c;
             if(*(bufp-1) == '\\' && *bufp == '0')
                 break;
             bufp++;
         }
         else if(rc == 0) {
-            if(n == 1)
-                return 0;
-            else
-                break;
+           return -2;
         } else
-            return -1;
+            return -4;
     }
-    *(bufp+1) = 0;
-    return n;
+    *(bufp-1) = 0;
+  //  printf("\n---read done\n");
+    return n-2;
 }
 
 ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n)
 {
     int cnt;
+   // printf("------rio_buffer start\n");
     while (rp->cnt <= 0) {
         rp->cnt = read(rp->fd, rp->buf, sizeof(rp->buf));
+    //    printf("------cnt : %d\n", rp->cnt);
         if(rp->cnt < 0) {
             return -1;
         }
@@ -269,8 +307,8 @@ ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n)
     memcpy(usrbuf, rp->bufptr, cnt);
     rp->bufptr += cnt;
     rp->cnt -= cnt;
+   // printf("------rio_buffer done\n");
     return cnt;
-
 }
 
 // open socket
@@ -308,7 +346,7 @@ int open_clientfd(char* ip, int port)
 // calculate checksum
 void set_checksum(struct message *m)
 {
-    printf("set checksum\n");
+    //printf("set checksum\n");
     unsigned short checksum1, checksum2, checksum3;
     unsigned int checksum, carry;
 
@@ -326,7 +364,7 @@ void set_checksum(struct message *m)
 
     checksum = checksum1 + checksum2 + checksum3;
     
-    printf("%x\n", checksum);
+    //printf("%x\n", checksum);
 
     while(checksum >> 16 != 0) {
        carry = checksum >> 16;
