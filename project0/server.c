@@ -18,7 +18,7 @@ int open_listenfd(int port);
 
 void main(int argc, char **argv)
 {
-    int port, i;
+    int port=-1, i;
     int listenfd, connfd;
     struct sockaddr_in clientaddr;
     unsigned int trans_id=0;
@@ -29,12 +29,13 @@ void main(int argc, char **argv)
             port = atoi(argv[++i]);
         }
     }
-
-    printf("port : %d\n", port);
+    if(port == -1) {
+        printf("no port, error\n");
+        return;
+    }
 
     signal(SIGCHLD, sigchld_handler);
     listenfd = open_listenfd(port);
-    printf("listenfd : %d\n", listenfd);
     while(1) {
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
@@ -45,7 +46,6 @@ void main(int argc, char **argv)
         if(fork() == 0) {
             close(listenfd);
             // use connfd
-            printf("new connection : %d\n", connfd);
             handle_connection(connfd, trans_id);
             close(connfd);
             exit(0);

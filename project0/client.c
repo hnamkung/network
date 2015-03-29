@@ -15,7 +15,8 @@ int open_clientfd(char* ip, int port);
 void main(int argc, char **argv)
 {
     char *ip;
-    int port, proto;
+    *ip = 0;
+    int port=-1, proto=-1;
     int fd_from_client;
     int i;
 
@@ -29,6 +30,18 @@ void main(int argc, char **argv)
         if(!strcmp(argv[i], "-m")) {
             proto = atoi(argv[++i]); 
         }
+    }
+    if(strlen(ip) == 0) {
+        printf("no ip, error\n");
+        return;
+    }
+    if(port == -1) {
+        printf("no port, error\n");
+        return;
+    }
+    if(proto != 1 && proto != 2) {
+        printf("-m should be either 1 or 2\n");
+        return;
     }
 
     fd_from_client = open_clientfd(ip, port);
