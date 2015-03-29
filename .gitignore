@@ -3,3 +3,6 @@ project0/tags
 project0/a.out
 *.out
 project0/output/*
+project0/client
+project0/server
+
