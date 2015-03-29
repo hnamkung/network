@@ -28,6 +28,34 @@ void remove_duplicate_slash(char *buf, int *len)
     }
 }
 
+int valid_checksum(struct message *m)
+{
+    unsigned short checksum1, checksum2, checksum3;
+    unsigned int checksum, carry;
+    unsigned short a;
+
+    checksum1 = *(char *)m << 8;
+    checksum1 += *((char *)m+1) & 0xff;
+
+    checksum2 = *((char *)m+4) << 8;
+    checksum2 += *((char *)m+5) & 0xff;
+
+    checksum3 = *((char *)m+6) << 8;
+    checksum3 += *((char *)m+7) & 0xff;
+
+    checksum = checksum1 + checksum2 + checksum3;
+
+    while(checksum >> 16 != 0) {
+       carry = checksum >> 16;
+       checksum = checksum & 0xffff;
+       checksum += carry;
+    }
+    a = checksum & 0xffff;
+    a = ntohs(~a);
+    if(a == m->checksum)
+        return 1;
+    return 0;
+}
 // read write wrapper
 void read_message(int fd, struct message *m)
 {
@@ -38,6 +66,12 @@ void read_message(int fd, struct message *m)
     m->proto = buf[1];
     m->checksum = ( *(short *)(buf+2) );
     m->trans_id = ( *(int *)(buf+4) );
+
+
+    if (valid_checksum(m) == 0) {
+        printf("checksum is different, error\n");
+        close(fd);
+    }
 
     m->checksum = ntohs( *(short *)(buf+2) );
     m->trans_id = ntohl( *(int *)(buf+4) );
@@ -188,32 +222,28 @@ ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
 // calculate checksum
 void set_checksum(struct message *m)
 {
-    //printf("set checksum\n");
     unsigned short checksum1, checksum2, checksum3;
     unsigned int checksum, carry;
+    unsigned short a;
 
     checksum1 = *(char *)m << 8;
     checksum1 += *((char *)m+1) & 0xff;
-  //  printf("%x\n", checksum1);
 
     checksum2 = *((char *)m+4) << 8;
     checksum2 += *((char *)m+5) & 0xff;
- //   printf("%x\n", checksum2);
 
     checksum3 = *((char *)m+6) << 8;
     checksum3 += *((char *)m+7) & 0xff;
-//    printf("%x\n", checksum3);
 
     checksum = checksum1 + checksum2 + checksum3;
-    
-    //printf("%x\n", checksum);
 
     while(checksum >> 16 != 0) {
        carry = checksum >> 16;
        checksum = checksum & 0xffff;
        checksum += carry;
     }
-    m->checksum = ntohs(~checksum);
+    a = checksum & 0xffff;
+    m->checksum = ntohs(~a);
 }
 
 // for debug 
