@@ -30,10 +30,6 @@ void main(int argc, char **argv)
             proto = atoi(argv[++i]); 
         }
     }
-    if(strlen(ip) == 0) {
-        printf("no ip, error\n");
-        return;
-    }
     if(port == -1) {
         printf("no port, error\n");
         return;
