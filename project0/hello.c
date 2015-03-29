@@ -57,7 +57,7 @@ void phase1(int fd_from_client);
 
 // phase 2
 void phase2(int fd_from_client);
-void add_duplicate_slash(char *buf, int *len)
+void add_duplicate_slash(char *buf, int *len);
 void remove_duplicate_slash(char *buf, int *len);
 
 // read write wrapper
@@ -95,7 +95,8 @@ void main(int argc, char **argv)
         if(!strcmp(argv[i], "-h")) {
             ip = argv[++i];
         }
-	if(!strcmp(argv[i], "-p")) {
+
+    	if(!strcmp(argv[i], "-p")) {
             port = atoi(argv[++i]);
         }
         if(!strcmp(argv[i], "-m")) {
@@ -138,36 +139,45 @@ void phase2(int fd)
 
     while(1) {
        stdin_len = read_string_from_stdin(STDIN_FILENO, buf, MAXLINE);
-       printf("%d nread]  %d\n", ++count, stdin_len);
-       if(len  > 0) {
-        //    printf("len : %d\n", error);
-      //      buf[4] = 0;
-       //     printf("buf : %s\n", buf);
-            //printf("userinput : %*.*s\n", 0, 50, buf);
-           add_duplicate_slash(buf, &len);
-           //printf("after process : %*.*s\n", 0, 50, buf);
-           buf[len] = '\\';
-           buf[len+1] = '0';
-           len += 2;
-           //printf("client : %s\n\n", buf);
-           //printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
-           rio_write_nobuf(fd, buf, len);
+       //printf("%d nread]  %d\n", ++count, stdin_len);
+       if(stdin_len  > 0) {
 
-           // int len = rio_read_nobuf(fd, buf, 4);
-           // buf[4] = 0;
-           // printf("server : %s    len(%d)\n", buf, len);
-            //printf("len : %d\n", len);
-            //read_string_from_server(&rio, buf);
-           if((err = read_string_from_server(&rio, buf)) < 0) {
-                printf("Error! read_string_from_server returned %d\n", err);
+           // for p
+          // buf[stdin_len]=0;
+           //printf("before buf : %s\n", buf);
+
+           add_duplicate_slash(buf, &stdin_len);
+           buf[stdin_len] = '\\';
+           buf[stdin_len+1] = '0';
+           stdin_len += 2;
+
+           // for p
+           //buf[stdin_len] = 0;
+           //printf("after buf : %s\n", buf);
+
+           rio_write_nobuf(fd, buf, stdin_len);
+
+           // p
+           //printf("write done\n");
+
+           if((server_len = read_string_from_server(&rio, buf)) < 0) {
+                printf("Error! read_string_from_server returned %d\n", server_len);
            }
-           remove_duplicate_slash(buf);
-           printf("bufsize] : %d\n\n",(int)strlen(buf));
-          // printf("%s", buf);
+
+           // for p
+           //buf[server_len] = 0;
+           //printf("read : %s\n", buf);
+
+           remove_duplicate_slash(buf, &server_len);
+           //printf("problem? : %s\n", buf);
+           //printf("bufsize] : %d\n\n",server_len);
+
+           int i; 
+           for(i=0; i<server_len; i++)
+               printf("%c", buf[i]);
         }
-        else if(len == 0) 
+        else if(stdin_len == 0) 
             break;
-        break;
     }
 }
 void add_duplicate_slash(char *buf, int *len)
@@ -184,19 +194,17 @@ void add_duplicate_slash(char *buf, int *len)
     }
 }
 
-void remove_duplicate_slash(char *buf, int nread)
+void remove_duplicate_slash(char *buf, int *len)
 {
-    int i=0;
-    int j=0;
-    while(buf[i] != 0) {
+    int i, j;
+    for(i=0; i<*len; i++) {
         if(buf[i] == '\\') {
-            for(j=i+1; j<strlen(buf); j++) {
+            for(j=i+1; j<*len-1; j++) {
                 buf[j] = buf[j+1];
             }
+            *len = *len - 1;
         }
-        i++;
     }
-
 }
 
 // read write wrapper
@@ -290,11 +298,8 @@ ssize_t read_string_from_server(rio_t *rp, char *usrbuf)
     char c, *bufp = usrbuf;
     int toggle=0;
 
-    // printf("---read string start\n");
-
     for(i=1; ; i++) {
         if((nread = rio_read(rp, &c, 1)) == 1) {
-            //printf("%c(%d)", c, (int)c);
             *bufp = c;
             if(*bufp == '\\') 
                 toggle = !toggle;
@@ -308,8 +313,6 @@ ssize_t read_string_from_server(rio_t *rp, char *usrbuf)
         } else
             return -1;
     }
-    *(bufp-1) = 0;
-  //  printf("\n---read done\n");
     return i-2;
 }
 
