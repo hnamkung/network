@@ -52,12 +52,66 @@ typedef struct {
     char buf[RIO_BUFSIZE];
 }rio_t;
 
+// connection_start
+void handle_connection(connfd);
+
 // interrupt handler
 void sigchld_handler(int sig);
 
 // open listenfd
 int open_listenfd(int port);
 
+
+void main(int argc, char **argv)
+{
+    int port, i;
+    int listenfd, connfd;
+    struct sockaddr_in clientaddr;
+    socklen_t clientlen; 
+
+    for(i=1; i<argc; i++) {
+    	if(!strcmp(argv[i], "-p")) {
+            port = atoi(argv[++i]);
+        }
+    }
+
+    printf("port : %d\n", port);
+
+    signal(SIGCHLD, sigchld_handler);
+    listenfd = open_listenfd(port);
+    printf("listenfd : %d\n", listenfd);
+    while(1) {
+        clientlen = sizeof(clientaddr);
+        connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
+        printf("connfd : %d\n", connfd);
+
+        if(fork() == 0) {
+            close(listenfd);
+            // use connfd
+            printf("new connection : %d\n", connfd);
+            handle_connection(connfd);
+            close(connfd);
+            exit(0);
+        }
+        close(connfd);
+    }
+}
+
+void handle_connection(connfd)
+{
+     
+}
+
+
+// interrupt handler
+void sigchld_handler(int sig)
+{
+    while(waitpid(-1, 0, WNOHANG) > 0)
+        ;
+    return;
+}
+
+// open listenfd
 int open_listenfd(int port)
 {
     int listenfd, optval=1;
@@ -85,56 +139,5 @@ int open_listenfd(int port)
         return -1;
     return listenfd;
 }
-
-
-void main(int argc, char **argv)
-{
-    int port, i;
-    int listenfd, connfd;
-    struct sockaddr_in clientaddr;
-    socklen_t clientlen; 
-
-    for(i=1; i<argc; i++) {
-    	if(!strcmp(argv[i], "-p")) {
-            port = atoi(argv[++i]);
-        }
-    }
-
-    printf("port : %d\n", port);
-
-    signal(SIGCHLD, sigchld_handler);
-    listenfd = open_listenfd(port);
-    printf("listenfd : %d\n", listenfd);
-    while(1) {
-        clientlen = sizeof(clientaddr);
-        connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
-        printf("connfd : %d\n", connfd);
-
-//        if(fork() == 0) {
-//            close(listenfd);
-//            // use connfd
-//            printf("new connection : %d\n", connfd);
-//            close(connfd);
-//            exit(0);
-//        }
-        close(connfd);
-    }
-//    fd_from_client = open_clientfd(ip, port);
-//
-//    // phase 1 - hand shake first
-//    phase1(fd_from_client, proto);
-//
-//    // phase 2
-//    phase2(fd_from_client, proto);
-
-}
-
-void sigchld_handler(int sig)
-{
-    while(waitpid(-1, 0, WNOHANG) > 0)
-        ;
-    return;
-}
-
 
 
