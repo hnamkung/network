@@ -103,12 +103,7 @@ void main(int argc, char **argv)
         }
     }
 
-    printf("ip : %s\n", ip);
-    printf("port : %d\n", port);
-
     fd_from_client = open_clientfd(ip, port);
-
-    printf("get fd : %d\n", fd_from_client);
 
     // phase 1 - hand shake first
     phase1(fd_from_client, proto);
@@ -381,29 +376,22 @@ ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
 }
 
 // open socket
-int open_clientfd(char* ip, int port)
+int open_clientfd(char *hostname, int port) 
 {
-    struct in_addr ipv4addr;
-    struct hostent *he;
-    struct sockaddr_in serveraddr;
     int clientfd;
+    struct hostent *hp;
+    struct sockaddr_in serveraddr;
 
-    // get in_addr from ip
-    inet_pton(AF_INET, ip, &ipv4addr);
-
-    // create socket
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-        return -1; 
+        return -1; /* check errno for cause of error */
 
-    // get host entry from in_addr
-    if((he = gethostbyaddr(&ipv4addr, sizeof ipv4addr, AF_INET)) == NULL)
-        return -2; 
-
+    /* Fill in the server's IP address and port */
+    if ((hp = gethostbyname(hostname)) == NULL)
+        return -2; /* check h_errno for cause of error */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
-    bcopy((char *)he->h_addr_list[0], 
-        (char *)&serveraddr.sin_addr.s_addr, he->h_length);
-
+    bcopy((char *)hp->h_addr_list[0], 
+              (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
     serveraddr.sin_port = htons(port);
 
     /* Establish a connection with the server */
