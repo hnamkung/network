@@ -21,7 +21,7 @@
 #include <arpa/inet.h>
 
 #define MAXLINE 8192
-#define MAXLINE_BUFSIZE 20000 
+#define MAXLINE_BUFSIZE 1000000 
 #define RIO_BUFSIZE 300
 
 #define BPattern "%d%d%d%d%d%d%d%d"
