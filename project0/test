@@ -1,6 +1,7 @@
 #!/bin/bash
-TA="-h 143.248.48.110 -p 10341 -m 1"
-ADD=$TA
+TA="-h 143.248.48.110 -p 10341 -m 2"
+LOCAL="-h localhost -p 12345 -m 1"
+ADD=$LOCAL
 
 ./client $ADD < samples/sample1.txt > output/sample1.out
 echo "1"

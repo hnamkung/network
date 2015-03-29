@@ -38,15 +38,9 @@ void read_message(int fd, struct message *m)
     m->proto = buf[1];
     m->checksum = ( *(short *)(buf+2) );
     m->trans_id = ( *(int *)(buf+4) );
-   // printf("read_message_network \n");
-   // printMessage(m);
 
     m->checksum = ntohs( *(short *)(buf+2) );
     m->trans_id = ntohl( *(int *)(buf+4) );
-
-    //printf("read_message_ubuntu_big_endian \n");
-   // printMessage(m);
-
 }
 
 void write_message(int fd, struct message *m)
@@ -56,8 +50,6 @@ void write_message(int fd, struct message *m)
     m_copy.trans_id = htonl(m_copy.trans_id);
     set_checksum(&m_copy);
     
-    //printf("write_message_network_little_endian\n");
-   // printMessage(&m_copy);
     rio_write_nobuf(fd, &m_copy, sizeof m_copy);
 }
 

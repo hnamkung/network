@@ -1,59 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <ctype.h>
-#include <setjmp.h>
-#include <signal.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include <math.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "io_library.h"
 
-#define MAXLINE 8192
-#define MAXLINE_BUFSIZE 20000 
-#define RIO_BUFSIZE 300
-
-#define BPattern "%d%d%d%d%d%d%d%d"
-#define BOrder(byte)  \
-      (byte & 0x80 ? 1 : 0), \
-  (byte & 0x40 ? 1 : 0), \
-  (byte & 0x20 ? 1 : 0), \
-  (byte & 0x10 ? 1 : 0), \
-  (byte & 0x08 ? 1 : 0), \
-  (byte & 0x04 ? 1 : 0), \
-  (byte & 0x02 ? 1 : 0), \
-  (byte & 0x01 ? 1 : 0) 
-
-// struct for protocol
-struct message {
-    char op;
-    char proto;
-    unsigned short checksum;
-    unsigned int trans_id;
-};
-
-// struct for io
-typedef struct sockaddr SA;
-typedef struct {
-    int fd;
-    int cnt;
-    char *bufptr;
-    char buf[RIO_BUFSIZE];
-}rio_t;
 
 // connection_start
-void handle_connection(connfd);
+void handle_connection(int connfd, unsigned int trans_id);
+
+// process duplicate char, server job
+void process_duplicate_char(char *buf, int *len, char *previous, int start);
 
 // interrupt handler
 void sigchld_handler(int sig);
@@ -67,6 +21,7 @@ void main(int argc, char **argv)
     int port, i;
     int listenfd, connfd;
     struct sockaddr_in clientaddr;
+    unsigned int trans_id=0;
     socklen_t clientlen; 
 
     for(i=1; i<argc; i++) {
@@ -84,12 +39,14 @@ void main(int argc, char **argv)
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
         printf("connfd : %d\n", connfd);
+        
+        trans_id++;
 
         if(fork() == 0) {
             close(listenfd);
             // use connfd
             printf("new connection : %d\n", connfd);
-            handle_connection(connfd);
+            handle_connection(connfd, trans_id);
             close(connfd);
             exit(0);
         }
@@ -97,12 +54,79 @@ void main(int argc, char **argv)
     }
 }
 
-void handle_connection(connfd)
+void handle_connection(int connfd, unsigned int trans_id)
 {
-     
+    struct message m, mread;
+    int proto;
+
+    // phase 1
+    m.op = 0;
+    m.proto = 0;
+    m.trans_id = htonl(trans_id);
+    write_message(connfd, &m);
+
+    read_message(connfd, &mread);
+    
+    if(m.trans_id != mread.trans_id) {
+        printf("trans_id error, disconnect %d\n", connfd);
+        return;
+    }
+    if(mread.op != 1) {
+        printf("op not 1 error, disconnect %d\n", connfd);
+        return;
+    }
+    proto = mread.proto;
+
+    char buf[MAXLINE_BUFSIZE];
+    char previous;
+    int start=0;
+    rio_t rio;
+    rio_init(&rio, connfd);
+    int client_len;
+
+    // phase 2
+    if(proto == 1) {
+        while(1) {
+            if((client_len = read_string_from_server(&rio, buf, proto)) > 0) {
+                remove_duplicate_slash(buf, &client_len);     
+
+                process_duplicate_char(buf, &client_len, &previous, start);
+                start = 1; 
+                add_duplicate_slash(buf, &client_len);
+                buf[client_len] = '\\';
+                buf[client_len+1] = '0';
+                client_len += 2;
+                rio_write_nobuf(connfd, buf, client_len);
+            }
+        }
+    }
+    else if(proto == 2) {
+    }
 }
 
+void process_duplicate_char(char *buf, int *len, char *previous, int start)
+{
+    if(*len == 0)
+        return;
 
+    int i, newlen=-1;
+    char newbuf[MAXLINE_BUFSIZE];
+
+    if(start == 0 || *previous != *buf) {
+        newlen++;
+        *newbuf = *buf;
+    }
+    for(i=1; i<*len; i++) {
+        if(buf[i-1] != buf[i]) {
+            newlen++;
+            newbuf[newlen] = buf[i];
+        }
+        *previous = buf[i];
+    }
+    newlen++;
+    *len = newlen;
+    memcpy(buf, newbuf, newlen);
+}
 // interrupt handler
 void sigchld_handler(int sig)
 {
