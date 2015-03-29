@@ -15,7 +15,6 @@ int open_clientfd(char* ip, int port);
 void main(int argc, char **argv)
 {
     char *ip;
-    *ip = 0;
     int port=-1, proto=-1;
     int fd_from_client;
     int i;
