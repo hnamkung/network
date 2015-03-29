@@ -101,6 +101,16 @@ void handle_connection(int connfd, unsigned int trans_id)
         }
     }
     else if(proto == 2) {
+        while(1) {
+            if((client_len = read_string_from_server(&rio, buf+4, proto)) > 0) {
+                process_duplicate_char(buf+4, &client_len, &previous, start);
+                start = 1;
+
+                *(unsigned int*)buf = htonl(client_len);
+
+                rio_write_nobuf(connfd, buf, client_len+4);
+            }
+        }
     }
 }
 
