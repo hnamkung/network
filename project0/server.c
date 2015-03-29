@@ -39,7 +39,6 @@ void main(int argc, char **argv)
     while(1) {
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
-        printf("connfd : %d\n", connfd);
         
         trans_id++;
 
