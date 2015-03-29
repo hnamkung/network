@@ -21,7 +21,8 @@
 #include <arpa/inet.h>
 
 #define MAXLINE 8192
-#define BUFSIZE 300
+#define MAXLINE_BUFSIZE 9000 
+#define RIO_BUFSIZE 300
 
 #define BPattern "%d%d%d%d%d%d%d%d"
 #define BOrder(byte)  \
@@ -48,7 +49,7 @@ typedef struct {
     int fd;
     int cnt;
     char *bufptr;
-    char buf[BUFSIZE];
+    char buf[RIO_BUFSIZE];
 }rio_t;
 
 // phase 1
@@ -69,8 +70,10 @@ ssize_t rio_write_nobuf(int fd, void *usrbuf, size_t n);
 
 // read write with buffer
 void rio_init(rio_t *rp, int fd);
-ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen);
-ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n);
+ssize_t read_string_from_stdin(rio_t *rp, char *usrbuf, size_t maxlen);
+ssize_t read_string_from_server(rio_t *rp, char *usrbuf, size_t maxlen);
+ssize_t rio_read_buf(rio_t *rp, void *usrbuf, size_t n);
+ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n);
 
 // open socket
 int open_clientfd(char* ip, int port);
@@ -83,7 +86,7 @@ void printMessage(struct message *m);
 
 void main(int argc, char **argv)
 {
-    char *ip, buf[MAXLINE];
+    char *ip;
     int port;
     int fd_from_client;
     int i;
@@ -127,29 +130,35 @@ void phase1(int fd)
 // phase 2
 void phase2(int fd)
 {
-    char buf[MAXLINE];
+    char buf[MAXLINE_BUFSIZE];
     int error;
-    rio_t rio;
+    rio_t stdin_rio, rio;
+    rio_init(&stdin_rio, STDIN_FILENO);
     rio_init(&rio, fd);
-    while(fgets(buf, MAXLINE, stdin) != NULL) {
-        add_duplicate_slash(buf);
-        int length = strlen(buf);
-        buf[length] = '\\';
-        buf[length+1] = '0';
-        buf[length+2] = 0;
-        //printf("client : %s\n\n", buf);
-        //printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
-        rio_write_nobuf(fd, buf, strlen(buf));
+    while(1) {
+        if( (error = read_string_from_stdin(&stdin_rio, buf, MAXLINE)) > 0) {
+        //    printf("len : %d\n", error);
+      //      buf[4] = 0;
+       //     printf("buf : %s\n", buf);
+            add_duplicate_slash(buf);
+            int length = strlen(buf);
+            buf[length] = '\\';
+            buf[length+1] = '0';
+            buf[length+2] = 0;
+            //printf("client : %s\n\n", buf);
+            //printf("client : %s    len(%d)\n", buf, (int)strlen(buf));
+            rio_write_nobuf(fd, buf, strlen(buf));
 
-       // int len = rio_read_nobuf(fd, buf, 4);
-       // buf[4] = 0;
-       // printf("server : %s    len(%d)\n", buf, len);
-        //printf("len : %d\n", len);
-       if((error = read_string(&rio, buf, MAXLINE)) < 0) {
-            printf("Error! read_string returned %d\n", error);
+           // int len = rio_read_nobuf(fd, buf, 4);
+           // buf[4] = 0;
+           // printf("server : %s    len(%d)\n", buf, len);
+            //printf("len : %d\n", len);
+           if((error = read_string_from_server(&rio, buf, MAXLINE)) < 0) {
+                //printf("Error! read_string_from_server returned %d\n", error);
+            }
+           remove_duplicate_slash(buf);
+           printf("%s", buf);
         }
-       remove_duplicate_slash(buf);
-       printf("%s", buf);
     }
 }
 void add_duplicate_slash(char *buf)
@@ -259,8 +268,16 @@ void rio_init(rio_t *rp, int fd)
     rp->cnt = 0;
     rp->bufptr = rp->buf;
 }
+ssize_t read_string_from_stdin(rio_t *rp, char *usrbuf, size_t maxlen)
+{
+    ssize_t nread;
 
-ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
+    nread = read(rp->fd, usrbuf, maxlen);
+    usrbuf[nread] = 0;
+    return nread;
+}
+
+ssize_t read_string_from_server(rio_t *rp, char *usrbuf, size_t maxlen)
 {
     int n, rc;
     char c, *bufp = usrbuf;
@@ -268,7 +285,7 @@ ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
    // printf("---read string start\n");
 
     for(n=1; n<maxlen; n++) {
-        if((rc = rio_read_buf(rp, &c, 1)) == 1) {
+        if((rc = rio_read(rp, &c, 1)) == 1) {
             //printf("%c(%d)", c, (int)c);
             *bufp = c;
             if(*(bufp-1) == '\\' && *bufp == '0')
@@ -276,29 +293,48 @@ ssize_t read_string(rio_t *rp, char *usrbuf, size_t maxlen)
             bufp++;
         }
         else if(rc == 0) {
-           return -2;
+           return -2; // error, could not complete string
         } else
-            return -4;
+            return -1;
     }
     *(bufp-1) = 0;
   //  printf("\n---read done\n");
     return n-2;
 }
 
-ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n)
+ssize_t rio_read_buf(rio_t *rp, void *usrbuf, size_t n)
 {
-    int cnt;
-   // printf("------rio_buffer start\n");
-    while (rp->cnt <= 0) {
-        rp->cnt = read(rp->fd, rp->buf, sizeof(rp->buf));
-    //    printf("------cnt : %d\n", rp->cnt);
-        if(rp->cnt < 0) {
+    size_t nleft = n;
+    ssize_t nread;
+    char *bufp = usrbuf;
+
+    while(nleft > 0) {
+        if((nread = rio_read(rp, bufp, nleft)) < 0) {
             return -1;
         }
+        else if(nread == 0)
+            break;
+        nleft -= nread;
+        bufp += nread;
+    }
+    return (n - nleft);
+}
+
+
+ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
+{
+    int cnt;
+//    printf("------rio_buffer start\n");
+    while (rp->cnt <= 0) {
+        rp->cnt = read(rp->fd, rp->buf, sizeof(rp->buf));
+ //       printf("------cnt : %d\n", rp->cnt);
+        if(rp->cnt < 0) {
+            return -1; // error will not happen
+        }
         else if(rp->cnt == 0)
-            return 0;
+            return 0; // EOF
         else
-            rp->bufptr = rp->buf;
+            rp->bufptr = rp->buf; // reset buffer ptr
     }
 
     cnt = n;
@@ -307,7 +343,7 @@ ssize_t rio_read_buf(rio_t *rp, char *usrbuf, size_t n)
     memcpy(usrbuf, rp->bufptr, cnt);
     rp->bufptr += cnt;
     rp->cnt -= cnt;
-   // printf("------rio_buffer done\n");
+  //  printf("------rio_buffer done\n");
     return cnt;
 }
 
