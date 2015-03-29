@@ -5,4 +5,6 @@ project0/a.out
 project0/output/*
 project0/client
 project0/server
-
+project0/client.o
+project0/server.o
+project0/io_library.o
