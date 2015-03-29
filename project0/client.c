@@ -103,7 +103,12 @@ void main(int argc, char **argv)
         }
     }
 
+    printf("ip : %s\n", ip);
+    printf("port : %d\n", port);
+
     fd_from_client = open_clientfd(ip, port);
+
+    printf("get fd : %d\n", fd_from_client);
 
     // phase 1 - hand shake first
     phase1(fd_from_client, proto);

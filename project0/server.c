@@ -100,18 +100,23 @@ void main(int argc, char **argv)
         }
     }
 
+    printf("port : %d\n", port);
+
     signal(SIGCHLD, sigchld_handler);
     listenfd = open_listenfd(port);
+    printf("listenfd : %d\n", listenfd);
     while(1) {
         clientlen = sizeof(clientaddr);
         connfd = accept(listenfd, (SA *)&clientaddr, &clientlen);
-        if(fork() == 0) {
-            close(listenfd);
-            // use connfd
-            printf("new connection : %d\n", connfd);
-            close(connfd);
-            exit(0);
-        }
+        printf("connfd : %d\n", connfd);
+
+//        if(fork() == 0) {
+//            close(listenfd);
+//            // use connfd
+//            printf("new connection : %d\n", connfd);
+//            close(connfd);
+//            exit(0);
+//        }
         close(connfd);
     }
 //    fd_from_client = open_clientfd(ip, port);
