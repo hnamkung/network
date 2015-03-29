@@ -1,2 +1,3 @@
 #!/bin/bash
-gcc hello.c
+gcc client.c -o a.out
+gcc server.c -o b.out
