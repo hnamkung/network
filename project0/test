@@ -1,0 +1,17 @@
+#!/bin/bash
+./client < samples/sample1.txt > output/sample1.out
+echo "1"
+./client < samples/sample2.txt > output/sample2.out
+echo "2"
+./client < samples/binary1.txt > output/binary1.out
+echo "3"
+./client < samples/binary2.jpg > output/binary2.out
+echo "4"
+./client < samples/binary3.jpg > output/binary3.out
+echo "5"
+
+vimdiff samples/sample1.out output/sample1.out
+vimdiff samples/sample2.out output/sample2.out
+vimdiff samples/binary1.out output/binary1.out
+vimdiff samples/binary2.out output/binary2.out
+vimdiff samples/binary3.out output/binary3.out
