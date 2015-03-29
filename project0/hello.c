@@ -53,10 +53,10 @@ typedef struct {
 }rio_t;
 
 // phase 1
-void phase1(int fd_from_client);
+void phase1(int fd_from_client, int proto);
 
 // phase 2
-void phase2(int fd_from_client);
+void phase2(int fd_from_client, int proto);
 void add_duplicate_slash(char *buf, int *len);
 void remove_duplicate_slash(char *buf, int *len);
 
@@ -71,7 +71,7 @@ ssize_t rio_write_nobuf(int fd, void *usrbuf, size_t n);
 // read write with buffer
 void rio_init(rio_t *rp, int fd);
 ssize_t read_string_from_stdin(int fd, char *usrbuf, size_t maxlen);
-ssize_t read_string_from_server(rio_t *rp, char *usrbuf);
+ssize_t read_string_from_server(rio_t *rp, char *usrbuf, int proto);
 ssize_t rio_read_buf(rio_t *rp, void *usrbuf, size_t n);
 ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n);
 
@@ -87,7 +87,7 @@ void printMessage(struct message *m);
 void main(int argc, char **argv)
 {
     char *ip;
-    int port;
+    int port, proto;
     int fd_from_client;
     int i;
 
@@ -95,41 +95,40 @@ void main(int argc, char **argv)
         if(!strcmp(argv[i], "-h")) {
             ip = argv[++i];
         }
-
     	if(!strcmp(argv[i], "-p")) {
             port = atoi(argv[++i]);
         }
         if(!strcmp(argv[i], "-m")) {
+            proto = atoi(argv[++i]); 
         }
     }
-//    printf("port : %d\n", port);
-//    printf("ip : %s\n", ip);
 
     fd_from_client = open_clientfd(ip, port);
 
     // phase 1 - hand shake first
-    phase1(fd_from_client);
+    phase1(fd_from_client, proto);
 
     // phase 2
-    phase2(fd_from_client);
+    phase2(fd_from_client, proto);
+
     close(fd_from_client);
 }
 
 // phase 1
-void phase1(int fd)
+void phase1(int fd, int proto)
 {
     struct message read_m, write_m;
     read_message(fd, &read_m);
 
     write_m.op = 1;
-    write_m.proto = 1;
+    write_m.proto = proto;
     write_m.trans_id = read_m.trans_id;
 
     write_message(fd, &write_m);
 }
 
 // phase 2
-void phase2(int fd)
+void phase2(int fd, int proto)
 {
     char buf[MAXLINE_BUFSIZE];
     int stdin_len, server_len;
@@ -137,47 +136,51 @@ void phase2(int fd)
     rio_t rio;
     rio_init(&rio, fd);
 
-    while(1) {
-       stdin_len = read_string_from_stdin(STDIN_FILENO, buf, MAXLINE);
-       //printf("%d nread]  %d\n", ++count, stdin_len);
-       if(stdin_len  > 0) {
+    if(proto == 1) {
+        while(1) {
+           stdin_len = read_string_from_stdin(STDIN_FILENO, buf, MAXLINE);
+           if(stdin_len  > 0) {
+               add_duplicate_slash(buf, &stdin_len);
+               buf[stdin_len] = '\\';
+               buf[stdin_len+1] = '0';
+               stdin_len += 2;
 
-           // for p
-          // buf[stdin_len]=0;
-           //printf("before buf : %s\n", buf);
+               rio_write_nobuf(fd, buf, stdin_len);
 
-           add_duplicate_slash(buf, &stdin_len);
-           buf[stdin_len] = '\\';
-           buf[stdin_len+1] = '0';
-           stdin_len += 2;
+               if((server_len = read_string_from_server(&rio, buf, proto)) < 0) {
+                    printf("Error! read_string_from_server returned %d\n", server_len);
+               }
 
-           // for p
-           //buf[stdin_len] = 0;
-           //printf("after buf : %s\n", buf);
+               remove_duplicate_slash(buf, &server_len);
 
-           rio_write_nobuf(fd, buf, stdin_len);
-
-           // p
-           //printf("write done\n");
-
-           if((server_len = read_string_from_server(&rio, buf)) < 0) {
-                printf("Error! read_string_from_server returned %d\n", server_len);
+               int i; 
+               for(i=0; i<server_len; i++)
+                   printf("%c", buf[i]);
            }
-
-           // for p
-           //buf[server_len] = 0;
-           //printf("read : %s\n", buf);
-
-           remove_duplicate_slash(buf, &server_len);
-           //printf("problem? : %s\n", buf);
-           //printf("bufsize] : %d\n\n",server_len);
-
-           int i; 
-           for(i=0; i<server_len; i++)
-               printf("%c", buf[i]);
+           else if(stdin_len == 0) 
+               break;
         }
-        else if(stdin_len == 0) 
-            break;
+    }
+
+    if(proto == 2) {
+        while(1) {
+           stdin_len = read_string_from_stdin(STDIN_FILENO, buf+4, MAXLINE);
+           if(stdin_len  > 0) {
+               *(unsigned int*)buf = htonl(stdin_len);
+                
+               rio_write_nobuf(fd, buf, stdin_len+4);
+
+               if((server_len = read_string_from_server(&rio, buf, proto)) < 0) {
+                    printf("Error! read_string_from_server returned %d\n", server_len);
+               }
+
+               int i; 
+               for(i=0; i<server_len; i++)
+                   printf("%c", buf[i]);
+           }
+           else if(stdin_len == 0) 
+               break;
+        }
     }
 }
 void add_duplicate_slash(char *buf, int *len)
@@ -292,28 +295,39 @@ ssize_t read_string_from_stdin(int fd, char *usrbuf, size_t maxlen)
     return nread;
 }
 
-ssize_t read_string_from_server(rio_t *rp, char *usrbuf)
+ssize_t read_string_from_server(rio_t *rp, char *usrbuf, int proto)
 {
-    int i, nread;
-    char c, *bufp = usrbuf;
-    int toggle=0;
+    if(proto == 1) {
+        int i, nread;
+        char c, *bufp = usrbuf;
+        int toggle=0;
 
-    for(i=1; ; i++) {
-        if((nread = rio_read(rp, &c, 1)) == 1) {
-            *bufp = c;
-            if(*bufp == '\\') 
-                toggle = !toggle;
-            if(toggle && *(bufp-1) == '\\' && *bufp == '0') {
-                break;
+        for(i=1; ; i++) {
+            if((nread = rio_read(rp, &c, 1)) == 1) {
+                *bufp = c;
+                if(*bufp == '\\') 
+                    toggle = !toggle;
+                if(toggle && *(bufp-1) == '\\' && *bufp == '0') {
+                    break;
+                }
+                bufp++;
             }
-            bufp++;
+            else if(nread == 0) {
+               return -2; // error, could not complete string
+            } else
+                return -1;
         }
-        else if(nread == 0) {
-           return -2; // error, could not complete string
-        } else
-            return -1;
+        return i-2;
     }
-    return i-2;
+    else if(proto == 2) {
+        char lenbuf[10];
+        unsigned int len;
+        rio_read_nobuf(rp->fd, lenbuf, 4);
+        len = ntohl(*(unsigned int*)lenbuf); 
+
+        rio_read_nobuf(rp->fd, usrbuf, len);
+        return len;
+    }
 }
 
 ssize_t rio_read_buf(rio_t *rp, void *usrbuf, size_t n)
